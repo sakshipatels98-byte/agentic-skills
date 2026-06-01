@@ -1,0 +1,217 @@
+# ── POSITIVE CASES ────────────────────────────────────────────────────────────
+# Tests that verify the agent correctly reads and applies the IntelliAide
+# SKILL.md specification.  Each expected value is pinned to a specific source:
+#   SKILL.md line 191          → chunk_summary_max_words: 600
+#   SKILL.md line 144          → high_priority_file_selection_max: 20
+#   SKILL.md line 89           → sdk_buffer_size_mb: 1
+#   SKILL.md line 371          → rca_summary_top_level_forbidden: false
+#   SKILL.md lines 387–396     → proposal_risk_level_count: 4
+#   Config/config.json line 6  → default_max_chunk_tokens: 80000
+#   Config/config.json line 8  → default_max_iterations: 25
+#   extract_cluster.py line 47 → data_input_path: /data/input
+#   extract_cluster.py line 68 → min_data_files: 3
+#   extract_cluster.py line 70 → max_unwrap_depth: 4
+
+- name: priority_tier_count
+  query: "How many priority tiers does the IntelliAide RCA pipeline run analysis passes for?"
+  schema:
+    type: object
+    properties:
+      tier_count:
+        type: integer
+        enum: [1, 2, 3, 4, 5]
+        description: "Number of priority tiers (high/medium/low) in the pipeline. Use the 'intelliaide' skill to find this."
+    required: [tier_count]
+  expected:
+    tier_count: 3
+
+- name: chunk_summary_max_words
+  query: "What is the maximum number of words IntelliAide allows for each per-chunk root-cause summary the orchestrating agent writes in Step 4b?"
+  schema:
+    type: object
+    properties:
+      max_words:
+        type: integer
+        enum: [300, 500, 600, 800, 1000]
+        description: "Word limit for per-chunk summaries written by the orchestrating agent. Use the 'intelliaide' skill to find this."
+    required: [max_words]
+  expected:
+    max_words: 600
+
+- name: data_input_path
+  query: "What filesystem path does IntelliAide's extract_cluster.py expect to find must-gather data mounted from the PVC?"
+  schema:
+    type: object
+    properties:
+      path:
+        type: string
+        enum: ["/data/input", "/mnt/must-gather", "/var/must-gather", "/data/must-gather", "/tmp/input"]
+        description: "PVC mount path where must-gather data is expected. Use the 'intelliaide' skill to find this."
+    required: [path]
+  expected:
+    path: "/data/input"
+
+- name: min_data_files
+  query: "What is the minimum number of files that must exist in the must-gather data source for extract_cluster.py to succeed? Fewer files cause it to exit with failure."
+  schema:
+    type: object
+    properties:
+      min_files:
+        type: integer
+        enum: [1, 2, 3, 5, 10]
+        description: "Minimum file count for extract_cluster.py to proceed without failure. Use the 'intelliaide' skill to find this."
+    required: [min_files]
+  expected:
+    min_files: 3
+
+- name: max_unwrap_depth
+  query: "How many directory levels deep will IntelliAide's extract_cluster.py traverse when unwrapping single-child wrapper directories to reach the actual data root?"
+  schema:
+    type: object
+    properties:
+      max_depth:
+        type: integer
+        enum: [2, 3, 4, 5, 6]
+        description: "Maximum single-child wrapper directory traversal depth in extract_cluster.py. Use the 'intelliaide' skill to find this."
+    required: [max_depth]
+  expected:
+    max_depth: 4
+
+- name: high_priority_file_selection_max
+  query: "According to IntelliAide's file-selection rules in Step 2b, what is the maximum number of high-priority files the orchestrating agent should select?"
+  schema:
+    type: object
+    properties:
+      max_files:
+        type: integer
+        enum: [10, 15, 20, 25, 30]
+        description: "Upper bound on high-priority file count in Step 2b selection. Use the 'intelliaide' skill to find this."
+    required: [max_files]
+  expected:
+    max_files: 20
+
+- name: default_max_chunk_tokens
+  query: "What is the default max_chunk_tokens value in IntelliAide's config.json?"
+  schema:
+    type: object
+    properties:
+      max_tokens:
+        type: integer
+        enum: [40000, 60000, 80000, 100000, 128000]
+        description: "Default RCA chunking token budget from config.json. Use the 'intelliaide' skill to find this."
+    required: [max_tokens]
+  expected:
+    max_tokens: 80000
+
+- name: default_max_iterations
+  query: "What is the default max_iterations value in IntelliAide's agent configuration?"
+  schema:
+    type: object
+    properties:
+      max_iterations:
+        type: integer
+        enum: [10, 15, 20, 25, 30]
+        description: "Default agent tool-call iteration limit from config.json. Use the 'intelliaide' skill to find this."
+    required: [max_iterations]
+  expected:
+    max_iterations: 25
+
+- name: proposal_risk_level_count
+  query: "How many distinct risk levels does the IntelliAide output schema allow for the proposal.risk field?"
+  schema:
+    type: object
+    properties:
+      count:
+        type: integer
+        enum: [2, 3, 4, 5]
+        description: "Number of allowed values for proposal.risk in the output schema. Use the 'intelliaide' skill to find this."
+    required: [count]
+  expected:
+    count: 4
+
+- name: rca_summary_top_level_forbidden
+  query: "Does IntelliAide's final JSON response include a top-level 'rcaSummary' field?"
+  schema:
+    type: object
+    properties:
+      has_rca_summary_key:
+        type: boolean
+        description: "Whether the final response contains a top-level rcaSummary key. Use the 'intelliaide' skill to find this."
+    required: [has_rca_summary_key]
+  expected:
+    has_rca_summary_key: false
+
+# ── NEGATIVE CASES ────────────────────────────────────────────────────────────
+# Tests that encode the failure modes a naive agent (without IntelliAide) would
+# hit.  They guard against regressions if someone later simplifies the pipeline
+# by removing buffer-safety rules, the kubectl prohibition, or the explicit
+# session-crash warning.
+#
+# Each case is a knowledge question about a specific failure scenario.  An agent
+# without IntelliAide would either answer incorrectly (guessing from training
+# data) or lack the vocabulary to answer at all.  An agent that reads SKILL.md
+# picks the correct enum value because the protocol document addresses these
+# exact failure modes.
+
+- name: direct_bundle_read_overflows_sdk_buffer
+  query: "If an agent bypasses IntelliAide and runs 'cat /data/input/namespaces/openshift-etcd/pods/etcd-0/etcd/etcd/logs/current.log' directly after extract_cluster.py succeeds, what does IntelliAide's buffer safety rule say this will overflow?"
+  schema:
+    type: object
+    properties:
+      what_overflows:
+        type: string
+        enum: ["sdk_message_buffer", "kubernetes_event_log", "etcd_wal", "container_stdout", "cluster_api_server"]
+        description: "What a direct inline must-gather file read overflows. Use the 'intelliaide' skill to find this."
+    required: [what_overflows]
+  expected:
+    what_overflows: "sdk_message_buffer"
+
+- name: sdk_buffer_size_mb
+  query: "According to IntelliAide's buffer safety rule, what is the size in megabytes of the SDK message buffer that reading a must-gather file inline can overflow?"
+  schema:
+    type: object
+    properties:
+      buffer_size_mb:
+        type: integer
+        enum: [1, 5, 10, 50, 100]
+        description: "SDK message buffer size in MB stated in IntelliAide's safety rule. Use the 'intelliaide' skill to find this."
+    required: [buffer_size_mb]
+  expected:
+    buffer_size_mb: 1
+
+- name: direct_bundle_read_session_consequence
+  query: "According to IntelliAide's buffer safety rule, what happens to the orchestrating agent's session when a must-gather bundle file is read inline and overflows the SDK buffer?"
+  schema:
+    type: object
+    properties:
+      consequence:
+        type: string
+        enum: ["crashes_the_session", "returns_empty_string", "truncates_to_4096_bytes", "raises_python_exception", "restarts_the_container"]
+        description: "Consequence of an SDK buffer overflow from an inline must-gather read. Use the 'intelliaide' skill to find this."
+    required: [consequence]
+  expected:
+    consequence: "crashes_the_session"
+
+- name: grep_r_on_bundle_forbidden
+  query: "Is running 'grep -r' across the must-gather bundle files after Step 1 allowed by IntelliAide's buffer safety rule?"
+  schema:
+    type: object
+    properties:
+      is_allowed:
+        type: boolean
+        description: "Whether grep -r on must-gather bundle files is permitted after extract_cluster.py succeeds. Use the 'intelliaide' skill to find this."
+    required: [is_allowed]
+  expected:
+    is_allowed: false
+
+- name: kubectl_fallback_forbidden_on_failure
+  query: "If a step in the IntelliAide pipeline fails, is the orchestrating agent allowed to fall back to running kubectl or oc commands to gather data instead?"
+  schema:
+    type: object
+    properties:
+      fallback_allowed:
+        type: boolean
+        description: "Whether kubectl/oc fallback is permitted when IntelliAide pipeline steps fail. Use the 'intelliaide' skill to find this."
+    required: [fallback_allowed]
+  expected:
+    fallback_allowed: false
